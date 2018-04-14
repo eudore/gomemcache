@@ -334,6 +334,37 @@ func (c *Client) Touch(key string, seconds int32) (err error) {
 	})
 }
 
+func (c *Client) Gat(key string, seconds int32) (item *Item, err error) {
+	err = c.withKeyAddr(key, func(addr net.Addr) error {
+		return c.gatFromAddr(addr, seconds, []string{key}, func(it *Item) { item = it })
+	})
+	if err == nil && item == nil {
+		err = ErrCacheMiss
+	}
+	return
+}
+
+func (c *Client) Size() (num int,err error){
+	num = 0
+	err = c.selector.Each(func(addr net.Addr) error{
+		return c.sizeFromAddr(addr,&num)
+	})
+	return
+}
+
+func (c *Client) GetAllKeys() (item []string,err error) {
+	var n int = 0
+	size,_ := c.Size()
+	item = make([]string,size)
+	err = c.selector.Each(func(addr net.Addr) error {
+		return c.lruFromAddr(addr,func(key string) { 
+			item[n] = key
+			n++
+		})
+	})
+	 return
+}
+
 func (c *Client) withKeyAddr(key string, fn func(net.Addr) error) (err error) {
 	if !legalKey(key) {
 		return ErrMalformedKey
@@ -363,6 +394,21 @@ func (c *Client) withKeyRw(key string, fn func(*bufio.ReadWriter) error) error {
 func (c *Client) getFromAddr(addr net.Addr, keys []string, cb func(*Item)) error {
 	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
 		if _, err := fmt.Fprintf(rw, "gets %s\r\n", strings.Join(keys, " ")); err != nil {
+			return err
+		}
+		if err := rw.Flush(); err != nil {
+			return err
+		}
+		if err := parseGetResponse(rw.Reader, cb); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func (c *Client) gatFromAddr(addr net.Addr, seconds int32,keys []string, cb func(*Item)) error {
+	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
+		if _, err := fmt.Fprintf(rw, "gats %d %s\r\n", seconds,strings.Join(keys, " ")); err != nil {
 			return err
 		}
 		if err := rw.Flush(); err != nil {
@@ -422,6 +468,52 @@ func (c *Client) touchFromAddr(addr net.Addr, keys []string, expiration int32) e
 		}
 		return nil
 	})
+}
+
+func (c *Client) sizeFromAddr(addr net.Addr, num *int) error {
+	return c.withAddrRw(addr,func(rw *bufio.ReadWriter) error {		
+		if _, err := fmt.Fprintf(rw, "stats items\r\n"); err != nil {
+			return err
+		}
+		if err := rw.Flush(); err != nil {
+			return err
+		}
+		for {
+			line,err := rw.ReadSlice('\n');
+			if bytes.Equal(line,resultEnd) || err != nil{
+				break
+			}
+			str := string(line)
+			if strings.Contains(str,"number "){
+				n,_ :=strconv.Atoi(str[strings.LastIndex(str," ")+1:len(str)-2])
+				*num += n
+				rw.Discard(rw.Reader.Buffered())
+				break
+			}
+		}
+		return nil
+	})
+}
+
+func (c *Client) lruFromAddr(addr net.Addr, cb func(key string)) error {
+	return c.withAddrRw(addr,func(rw *bufio.ReadWriter) error {
+		if _, err := fmt.Fprintf(rw, "lru_crawler metadump all\r\n"); err != nil {
+			return err
+		}
+		if err := rw.Flush(); err != nil {
+			return err
+		}
+		var num = 0
+		c.sizeFromAddr(addr,&num)
+		for i:=0; i<num; i++ {
+			str,_ :=rw.ReadString('\n')
+			s := strings.Index(str,"=")+1
+			e := strings.Index(str," ")
+			str = str[s:e]
+			cb(str)
+		}
+		return nil
+	})	
 }
 
 // GetMulti is a batch version of Get. The returned map from keys to
