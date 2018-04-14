@@ -33,12 +33,14 @@ type ServerSelector interface {
 	// should be shared onto.
 	PickServer(key string) (net.Addr, error)
 	Each(func(net.Addr) error) error
+	SetHash(hash func(key []byte) (uint32))
 }
 
 // ServerList is a simple ServerSelector. Its zero value is usable.
 type ServerList struct {
 	mu    sync.RWMutex
 	addrs []net.Addr
+	hash  func(key []byte) (uint32)
 }
 
 // staticAddr caches the Network() and String() values from any net.Addr.
@@ -86,6 +88,7 @@ func (ss *ServerList) SetServers(servers ...string) error {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 	ss.addrs = naddr
+	ss.hash = crc32.ChecksumIEEE
 	return nil
 }
 
@@ -122,8 +125,12 @@ func (ss *ServerList) PickServer(key string) (net.Addr, error) {
 	}
 	bufp := keyBufPool.Get().(*[]byte)
 	n := copy(*bufp, key)
-	cs := crc32.ChecksumIEEE((*bufp)[:n])
+	cs := ss.hash((*bufp)[:n])
 	keyBufPool.Put(bufp)
 
 	return ss.addrs[cs%uint32(len(ss.addrs))], nil
+}
+
+func (ss *ServerList) SetHash(hash func(key []byte) (uint32)) {
+	ss.hash = hash
 }

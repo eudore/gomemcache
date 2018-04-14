@@ -200,6 +200,10 @@ func (cn *conn) condRelease(err *error) {
 	}
 }
 
+func (c *Client) SetHash(hash func(key []byte) (uint32)) {
+	c.selector.SetHash(hash)
+}
+
 func (c *Client) putFreeConn(addr net.Addr, cn *conn) {
 	c.lk.Lock()
 	defer c.lk.Unlock()
