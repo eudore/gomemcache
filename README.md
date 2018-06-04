@@ -7,16 +7,16 @@ This is a memcache client library for the Go programming language
 
 ### Using *go get*
 
-    $ go get github.com/bradfitz/gomemcache/memcache
+    $ go get github.com/eudore/gomemcache/memcache
 
 After this command *gomemcache* is ready to use. Its source will be in:
 
-    $GOPATH/src/github.com/bradfitz/gomemcache/memcache
+    $GOPATH/src/github.com/eudore/gomemcache/memcache
 
 ## Example
 
     import (
-            "github.com/bradfitz/gomemcache/memcache"
+            "github.com/eudore/gomemcache/memcache"
     )
 
     func main() {
@@ -35,3 +35,12 @@ Or run:
 
     $ godoc github.com/bradfitz/gomemcache/memcache
 
+
+
+## Extended method
+
+func (c *Client) Gat(key string, seconds int32) (item *Item, err error)
+
+func (c *Client) Size() (num int,err error)
+
+func (c *Client) GetAllKeys() (item []string,err error)
